@@ -40,6 +40,14 @@ class Mongo {
       throw new Error('Ocorreu um erro inesperado');
     }
   }
+
+  close() {
+    try {
+      this.connection.close();
+    } catch (error) {
+      throw new Error('Erro ao tentar fechar a conexão');
+    }
+  }
 }
 
 export default Mongo;

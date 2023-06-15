@@ -16,5 +16,6 @@ module.exports = {
     'no-await-in-loop': 0,
     'no-continue': 0,
     'consistent-return': 0,
+    'prefer-const': 0,
   },
 };

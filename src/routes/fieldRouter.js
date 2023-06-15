@@ -1,12 +1,12 @@
-import { Router } from "express";
-import loginRequire from "../middlewares/loginRequire";
-import fieldController from '../controllers/fieldController'
+import { Router } from 'express';
+import loginRequire from '../middlewares/loginRequire';
+import fieldController from '../controllers/fieldController';
 
-const routes = new Router()
+const routes = new Router();
 
-routes.get('/:tableName', loginRequire, fieldController.show)
-routes.post('/', loginRequire, fieldController.store)
-routes.put('/', loginRequire, fieldController.update)
-//routes.delete('/', loginRequire, fieldController.delete)
+routes.get('/:collectionName', loginRequire, fieldController.show);
+routes.post('/', loginRequire, fieldController.store);
+routes.put('/', loginRequire, fieldController.update);
+// routes.delete('/', loginRequire, fieldController.delete)
 
-export default routes
+export default routes;

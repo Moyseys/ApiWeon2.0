@@ -11,18 +11,18 @@ const queryInterface = sequelize.getQueryInterface();
 class TableController {
   // table
   async store(req, res) {
+    const existPermission = await Permission.checksPermission(req.userId, 'insert');
+
+    if (!existPermission) {
+      return res.status(400).json({
+        errors: 'Este usuario não possui a permissao necessaria',
+      });
+    }
+
+    const mongoDb = new MongoDb(req.company);
+    const connection = await mongoDb.connect();
+
     try {
-      const existPermission = await Permission.checksPermission(req.userId, 'insert');
-
-      if (!existPermission) {
-        return res.status(400).json({
-          errors: 'Este usuario não possui a permissao necessaria',
-        });
-      }
-
-      const mongoDb = new MongoDb(req.company);
-      const connection = await mongoDb.connect();
-
       const existDb = await mongoDb.existDb(req.company);
 
       if (!existDb) {
@@ -31,9 +31,9 @@ class TableController {
         });
       }
 
-      const { name, fields } = req.body;
+      const { name } = req.body;
 
-      if (!name || !fields) {
+      if (!name) {
         return res.status(400).json({
           errors: 'Envie os valores corretos',
         });
@@ -47,24 +47,7 @@ class TableController {
         });
       }
 
-      const arrayFieldsRequired = fields.map((vl) => vl.fieldName);
-
-      const objFieldsProperties = fields.reduce((accumulator, vl) => {
-        const config = { bsonType: vl.type, description: vl.description };
-        accumulator[vl.fieldName] = config;
-        return accumulator;
-      }, {});
-
-      await connection.db().createCollection(name, {
-        validator: {
-          $jsonSchema: {
-            bsonType: 'object',
-            title: `${name} validation`,
-            required: arrayFieldsRequired,
-            properties: objFieldsProperties,
-          },
-        },
-      });
+      await connection.db().createCollection(name);
 
       return res.status(200).json({
         success: 'Predefinição criada com sucesso',
@@ -72,8 +55,9 @@ class TableController {
     } catch (e) {
       return res.status(400).json({
         errors: 'Ocorreu um erro inesperado',
-        e,
       });
+    } finally {
+      mongoDb.close();
     }
   }
 

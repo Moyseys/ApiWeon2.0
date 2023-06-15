@@ -30,7 +30,7 @@ class App {
     this.app.use('/template', templateRouter);
     this.app.use('/users', usersRoutes);
     this.app.use('/token', tokenRoutes);
-    this.app.use('/table', tableRoutes);
+    this.app.use('/collection', tableRoutes);
     this.app.use('/field', fieldRoutes);
     this.app.use('/value', valueRoutes);
   }
