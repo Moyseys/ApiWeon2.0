@@ -9,6 +9,7 @@ import tableRoutes from './routes/tableRouter';
 import fieldRoutes from './routes/fieldRouter';
 import valueRoutes from './routes/valueRouter';
 import templateRouter from './routes/templateRouter';
+import downloadRouter from './routes/downloadRouter';
 
 dotenv.config();
 
@@ -33,6 +34,7 @@ class App {
     this.app.use('/collection', tableRoutes);
     this.app.use('/field', fieldRoutes);
     this.app.use('/value', valueRoutes);
+    this.app.use('/download', downloadRouter);
   }
 }
 
