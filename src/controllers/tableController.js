@@ -2,11 +2,7 @@ import dotenv from 'dotenv';
 import MongoDb from '../database/mongoDb';
 import Permission from '../models/PermissionsModel';
 
-import sequelize from '../database/index';
-
 dotenv.config();
-
-const queryInterface = sequelize.getQueryInterface();
 
 class TableController {
   // table
@@ -62,10 +58,10 @@ class TableController {
   }
 
   async index(req, res) {
-    try {
-      const mongoDb = new MongoDb(req.company);
-      const connection = await mongoDb.connect();
+    const mongoDb = new MongoDb(req.company);
+    const connection = await mongoDb.connect();
 
+    try {
       const existDb = await mongoDb.existDb(req.company);
 
       if (!existDb) {
@@ -81,9 +77,21 @@ class TableController {
 
       for (const collectionName of collections) {
         const collection = database.collection(collectionName);
-        const document = await collection.findOne();
 
-        const fields = document ? Object.keys(document) : {};
+        const rule = await collection.options();
+        let fields = [];
+
+        if (Object.keys(rule).length > 0) {
+          const { properties } = rule.validator.$jsonSchema;
+
+          fields = (Object.entries(properties)).reduce((accumulator, field) => {
+            const objFields = {};
+            [objFields.key] = field;
+            objFields.type = field[1].bsonType;
+            accumulator.push(objFields);
+            return accumulator;
+          }, []);
+        }
 
         const obj = { collectionName, fields };
         response.push(obj);
@@ -99,73 +107,93 @@ class TableController {
     } catch (e) {
       return res.status(400).json({
         errors: 'Ocorreu um erro inesperado',
-        e,
       });
+    } finally {
+      mongoDb.close();
     }
   }
 
   async delete(req, res) {
+    const existPermission = await Permission.checksPermission(req.userId, 'delet');
+
+    if (!existPermission) {
+      return res.status(400).json({
+        errors: 'Este usuario não possui a permissao necessaria',
+      });
+    }
+    const { collectionName } = req.body;
+
+    if (!collectionName) {
+      return res.status(400).json({
+        errors: 'Envie os valores corretos',
+      });
+    }
+
+    const mongoDb = new MongoDb(req.company);
+    const client = await mongoDb.connect();
+
     try {
-      const existPermission = await Permission.checksPermission(req.userId, 'delet');
+      const dbExist = await mongoDb.existDb(req.company);
 
-      if (!existPermission) {
+      if (!dbExist) {
         return res.status(400).json({
-          errors: 'Este usuario não possui a permissao necessaria',
-        });
-      }
-      const { tableName } = req.body;
-
-      if (!tableName) {
-        return res.status(400).json({
-          errors: 'Envie os valores corretos',
-        });
-      }
-      const record = await queryInterface.tableExists(tableName);
-
-      if (!record) {
-        return res.status(400).json({
-          errors: 'Essa tabela não existe',
+          errors: 'Essa base de dados não existe',
         });
       }
 
-      await queryInterface.dropTable(tableName, { force: true });
-      // const sql = `DROP TABLE IF EXISTS ${process.env.DATABASE}.${tableName}`;
-      // await sequelize.query(sql, { type: sequelize.QueryTypes.RAW });
+      const database = client.db(req.company);
+      database.dropCollection(collectionName);
 
-      return res.status(200).json(true);
+      return res.status(200).json({
+        success: 'Sua predefinição foi excluida com sucesso',
+      });
     } catch (e) {
       return res.status(400).json({
         errors: 'Ocorreu um erro inesperado',
       });
+    } finally {
+      mongoDb.close();
     }
   }
 
   async update(req, res) {
+    const existPermission = await Permission.checksPermission(req.userId, 'edit');
+
+    if (!existPermission) {
+      return res.status(400).json({
+        errors: 'Este usuario não possui a permissao necessaria',
+      });
+    }
+    const { collectionName, newName } = req.body;
+
+    const mongoDb = new MongoDb(req.company);
+    const client = await mongoDb.connect();
+
     try {
-      const existPermission = await Permission.checksPermission(req.userId, 'edit');
-
-      if (!existPermission) {
-        return res.status(400).json({
-          errors: 'Este usuario não possui a permissao necessaria',
-        });
-      }
-      const { beforeName, afterName } = req.body;
-
-      if (!beforeName || !afterName) {
+      if (!collectionName || !newName) {
         return res.status(400).json({
           errors: 'Envie os valores corretos',
         });
       }
 
-      const existeTable = await queryInterface.tableExists(beforeName);
+      const existDb = await mongoDb.existDb(req.company);
 
-      if (!existeTable) {
+      if (!existDb) {
         return res.status(400).json({
-          errors: 'Essa tabela não existe',
+          errors: 'O bancos de dados q ue vc esta tentando acessar não existe',
         });
       }
 
-      await queryInterface.renameTable(beforeName, afterName);
+      if (!await mongoDb.collectionExist(collectionName)) {
+        return res.status(400).json({
+          errors: 'Essa predefinição não existe',
+        });
+      }
+
+      const database = client.db(req.company);
+      const collection = database.collection(collectionName);
+
+      await collection.rename(newName);
 
       return res.status(200).json({
         success: 'Tabela renomeada com sucesso',

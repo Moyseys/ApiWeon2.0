@@ -1,81 +1,87 @@
-import { DataTypes } from 'sequelize';
 import Permission from '../models/PermissionsModel';
 
 import sequelize from '../database/index';
 
+import MongoDb from '../database/mongoDb';
+
 const queryInterface = sequelize.getQueryInterface();
 
-class valueController {
+class ValueController {
   async store(req, res) {
+    const existPermission = await Permission.checksPermission(req.userId, 'insert');
+
+    if (!existPermission) {
+      return res.status(400).json({
+        errors: 'Este usuario não possui a permissao necessaria',
+      });
+    }
+    const { collectionName, values } = req.body;
+
+    if (!collectionName || !values) {
+      return res.status(400).json({
+        errors: 'Valores inválidos',
+      });
+    }
+
+    const mongoDb = new MongoDb(req.company);
+    const client = await mongoDb.connect();
     try {
-      const existPermission = await Permission.checksPermission(req.userId, 'insert');
+      const dbExist = await mongoDb.existDb(req.company);
 
-      if (!existPermission) {
+      if (!dbExist) {
         return res.status(400).json({
-          errors: 'Este usuario não possui a permissao necessaria',
+          errors: `A tabela ${collectionName} não exite`,
         });
       }
-      const { tableName, values } = req.body;
+      const database = client.db(req.company);
+      const collection = database.collection(collectionName);
 
-      if (!tableName || !values) {
-        return res.status(400).json({
-          errors: 'Valores inválidos',
-        });
-      }
+      await collection.insertMany(values);
 
-      const tableExist = await queryInterface.tableExists(tableName);
-
-      if (!tableExist) {
-        return res.status(400).json({
-          errors: `A tabela ${tableName} não exite`,
-        });
-      }
-      //validações
-      const describeTable = await queryInterface.describeTable(tableName);
-
-      for (const key in values) {
-        if (!describeTable[key]) {
-          return res.status(400).json({
-            errors: `O campo ${key} não exite na tabela ${tableName}`,
-          });
-        }
-      }
-
-      await queryInterface.bulkInsert(tableName, [values]);
-
-      return res.json(true);
+      return res.status(200).json({
+        success: 'Cadastro bem sucedido',
+      });
     } catch (e) {
       return res.status(400).json({
         errors: 'Ocorreu um erro inesperado',
       });
+    } finally {
+      mongoDb.close();
     }
   }
 
   async index(req, res) {
+    const { collectionName } = req.params;
+
+    if (!collectionName) {
+      return res.status(400).json({
+        errors: 'Envie os valores corretos',
+      });
+    }
+
+    const mongoDb = new MongoDb(req.company);
+    const client = await mongoDb.connect();
+
     try {
-      const { tableName } = req.params;
+      const dbExist = await mongoDb.existDb(req.company);
 
-      if (!tableName) {
+      if (!dbExist) {
         return res.status(400).json({
-          errors: 'Envie os valores corretos',
+          errors: `A base de dados ${collectionName} não exite`,
         });
       }
+      const database = client.db(req.company);
+      const collection = database.collection(collectionName);
 
-      const tableExist = await queryInterface.tableExists(tableName);
-
-      if (!tableExist) {
-        return res.status(400).json({
-          errors: `A tabela ${tableName} não exite`,
-        });
-      }
-
-      const values = await queryInterface.select(null, tableName);
+      const values = await collection.find({}).toArray();
 
       return res.status(200).json(values);
     } catch (e) {
       return res.status(400).json({
         errors: 'Ocorreu um erro inesperado',
       });
+    } finally {
+      mongoDb.close();
     }
   }
 
@@ -89,24 +95,24 @@ class valueController {
         });
       }
 
-      const { tableName } = req.body;
+      const { collectionName } = req.body;
       const { id } = req.params;
 
-      if (!tableName || !id) {
+      if (!collectionName || !id) {
         return res.status(400).json({
           errors: 'Valores inválidos',
         });
       }
 
-      const tableExist = await queryInterface.tableExists(tableName);
+      const tableExist = await queryInterface.tableExists(collectionName);
 
       if (!tableExist) {
         return res.status(400).json({
-          errors: `A tabela ${tableName} não exite`,
+          errors: `A tabela ${collectionName} não exite`,
         });
       }
 
-      const valueExiste = await queryInterface.select(null, tableName, { where: { id } })
+      const valueExiste = await queryInterface.select(null, collectionName, { where: { id } })
         .then((values) => (!!values.length));
 
       if (!valueExiste) {
@@ -115,7 +121,7 @@ class valueController {
         });
       }
 
-      await queryInterface.bulkDelete(tableName, { id });
+      await queryInterface.bulkDelete(collectionName, { id });
 
       return res.status(200).json(true);
     } catch (e) {
@@ -136,40 +142,40 @@ class valueController {
       }
 
       const { id } = req.params;
-      const { tableName, fieldName, value } = req.body;
+      const { collectionName, fieldName, value } = req.body;
 
-      if (!tableName || !fieldName || !value || !id) {
+      if (!collectionName || !fieldName || !value || !id) {
         return res.status(400).json({
           errors: 'Valores inválidos',
         });
       }
 
-      const tableExist = await queryInterface.tableExists(tableName);
+      const tableExist = await queryInterface.tableExists(collectionName);
 
       if (!tableExist) {
         return res.status(400).json({
-          errors: `A tabela ${tableName} não exite`,
+          errors: `A tabela ${collectionName} não exite`,
         });
       }
 
-      const tabela = await queryInterface.describeTable(tableName);
+      const tabela = await queryInterface.describeTable(collectionName);
       if (!tabela[fieldName]) {
         return res.status(400).json({
           errors: `O campo '${fieldName}' não existe na tabela.`,
         });
       }
 
-      const registro = await queryInterface.select(null, tableName, {
+      const registro = await queryInterface.select(null, collectionName, {
         where: { id },
       });
 
       if (registro.length === 0) {
         return res.status(400).json({
-          errors: `O registro com o ID '${id}' não existe na tabela '${tableName}`,
+          errors: `O registro com o ID '${id}' não existe na tabela '${collectionName}`,
         });
       }
 
-      await queryInterface.bulkUpdate(tableName, { [fieldName]: value }, { id });
+      await queryInterface.bulkUpdate(collectionName, { [fieldName]: value }, { id });
 
       return res.json({
         success: `campo ${fieldName} alterado com sucesso`,
@@ -182,4 +188,4 @@ class valueController {
   }
 }
 
-export default new valueController();
+export default new ValueController();

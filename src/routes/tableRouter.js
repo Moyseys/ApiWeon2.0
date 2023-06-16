@@ -7,6 +7,6 @@ const routes = new Router();
 routes.get('/', loginRequire, tableController.index);
 routes.post('/', loginRequire, tableController.store);
 routes.put('/', loginRequire, tableController.update);
-// routes.delete('/', loginRequire, tableController.delete)
+routes.delete('/', loginRequire, tableController.delete);
 
 export default routes;

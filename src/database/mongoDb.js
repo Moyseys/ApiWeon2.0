@@ -48,6 +48,13 @@ class Mongo {
       throw new Error('Erro ao tentar fechar a conexão');
     }
   }
+
+  async collectionExist(collectionName) {
+    const collections = (await this.connection.db(this.database).listCollections().toArray()).map((collec) => collec.name);
+
+    if (collections.includes(collectionName)) return true;
+    return false;
+  }
 }
 
 export default Mongo;

@@ -136,7 +136,6 @@ class TableController {
       });
     } catch (e) {
       return res.status(400).json({
-        e,
         errors: 'Ocorreu um erro inesperado',
       });
     } finally {
