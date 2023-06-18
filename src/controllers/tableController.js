@@ -142,7 +142,7 @@ class TableController {
       }
 
       const database = client.db(req.company);
-      database.dropCollection(collectionName);
+      await database.dropCollection(collectionName);
 
       return res.status(200).json({
         success: 'Sua predefinição foi excluida com sucesso',
