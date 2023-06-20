@@ -1,4 +1,4 @@
-import { MongoClient } from 'mongodb';
+import { MongoClient, ObjectId } from 'mongodb';
 
 import dotenv from 'dotenv';
 
@@ -34,10 +34,11 @@ class Mongo {
       const databasesList = (await this.connection.db().admin().listDatabases()).databases.map((vl) => vl.name);
 
       const exist = databasesList.includes(databaseName);
+      if (!exist) throw new Error('O bancos de dados q ue vc esta tentando acessar não existe');
 
       return exist;
     } catch (error) {
-      throw new Error('Ocorreu um erro inesperado');
+      throw new Error('O bancos de dados q ue vc esta tentando acessar não existe');
     }
   }
 
@@ -49,11 +50,32 @@ class Mongo {
     }
   }
 
-  async collectionExist(collectionName) {
-    const collections = (await this.connection.db(this.database).listCollections().toArray()).map((collec) => collec.name);
+  async existCollection(collectionName) {
+    try {
+      const collections = (await this.connection.db(this.database).listCollections().toArray()).map((collec) => collec.name);
 
-    if (collections.includes(collectionName)) return true;
-    return false;
+      if (collections.includes(collectionName)) return true;
+      return false;
+    } catch (err) {
+      throw new Error('A collection não exite');
+    }
+  }
+
+  async existValue(id, collectionName) {
+    const filter = { _id: new ObjectId(id) };
+
+    const conter = await this.connection.db(this.database).collection(collectionName).countDocuments(
+      filter,
+      (err) => {
+        throw new Error(err);
+      },
+    );
+
+    if (conter <= 0) {
+      return false;
+    }
+
+    return true;
   }
 }
 

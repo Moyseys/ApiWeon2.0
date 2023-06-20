@@ -1,10 +1,7 @@
+import { ObjectId } from 'mongodb';
 import Permission from '../models/PermissionsModel';
 
-import sequelize from '../database/index';
-
 import MongoDb from '../database/mongoDb';
-
-const queryInterface = sequelize.getQueryInterface();
 
 class ValueController {
   async store(req, res) {
@@ -26,15 +23,15 @@ class ValueController {
     const mongoDb = new MongoDb(req.company);
     const client = await mongoDb.connect();
     try {
-      const dbExist = await mongoDb.existDb(req.company);
+      if (!await mongoDb.existDb(req.company)) throw new Error('O banco de dados que está tentando acessar não existe');
 
-      if (!dbExist) {
-        return res.status(400).json({
-          errors: `A tabela ${collectionName} não exite`,
-        });
-      }
       const database = client.db(req.company);
       const collection = database.collection(collectionName);
+      const rule = await collection.options();
+
+      const { properties } = rule.validator.$jsonSchema;
+
+      if (Object.keys(properties) > Object.keys(values)) throw new Error('O objeto deve seguir as regras de validação');
 
       await collection.insertMany(values);
 
@@ -43,7 +40,7 @@ class ValueController {
       });
     } catch (e) {
       return res.status(400).json({
-        errors: 'Ocorreu um erro inesperado',
+        errors: e.message.message || 'Ocorreu um erro inesperado',
       });
     } finally {
       mongoDb.close();
@@ -52,6 +49,7 @@ class ValueController {
 
   async index(req, res) {
     const { collectionName } = req.params;
+    const limit = req.params.limit || 100;
 
     if (!collectionName) {
       return res.status(400).json({
@@ -63,22 +61,22 @@ class ValueController {
     const client = await mongoDb.connect();
 
     try {
-      const dbExist = await mongoDb.existDb(req.company);
+      await mongoDb.existDb(req.company);
 
-      if (!dbExist) {
-        return res.status(400).json({
-          errors: `A base de dados ${collectionName} não exite`,
-        });
-      }
       const database = client.db(req.company);
+
+      if (mongoDb.existCollection(collectionName)) {
+        throw new Error('Essa predefinição não existe');
+      }
+
       const collection = database.collection(collectionName);
 
-      const values = await collection.find({}).toArray();
+      const values = await collection.find({}).limit(Number(limit)).toArray();
 
       return res.status(200).json(values);
     } catch (e) {
       return res.status(400).json({
-        errors: 'Ocorreu um erro inesperado',
+        errors: e.message || 'Ocorreu um erro inesperado',
       });
     } finally {
       mongoDb.close();
@@ -86,103 +84,83 @@ class ValueController {
   }
 
   async delete(req, res) {
+    const existPermission = await Permission.checksPermission(req.userId, 'edit');
+
+    if (!existPermission) {
+      return res.status(400).json({
+        errors: 'Este usuario não possui a permissao necessaria',
+      });
+    }
+
+    const { id, collectionName } = req.params;
+
+    if (!collectionName || !id) {
+      return res.status(400).json({
+        errors: 'Valores inválidos',
+      });
+    }
+
+    const mongoDb = new MongoDb(req.company);
+    const client = await mongoDb.connect();
+
     try {
-      const existPermission = await Permission.checksPermission(req.userId, 'delet');
+      const collection = client.db(req.company).collection(collectionName);
 
-      if (!existPermission) {
-        return res.status(400).json({
-          errors: 'Este usuario não possui a permissao necessaria',
-        });
+      if (!await mongoDb.existValue(id, collectionName)) {
+        throw new Error(`O registro com o ID '${id}' não existe na tabela '${collectionName}`);
       }
 
-      const { collectionName } = req.body;
-      const { id } = req.params;
+      await collection.deleteOne({ _id: new ObjectId(id) });
 
-      if (!collectionName || !id) {
-        return res.status(400).json({
-          errors: 'Valores inválidos',
-        });
-      }
-
-      const tableExist = await queryInterface.tableExists(collectionName);
-
-      if (!tableExist) {
-        return res.status(400).json({
-          errors: `A tabela ${collectionName} não exite`,
-        });
-      }
-
-      const valueExiste = await queryInterface.select(null, collectionName, { where: { id } })
-        .then((values) => (!!values.length));
-
-      if (!valueExiste) {
-        return res.status(400).json({
-          errors: `Não existe um valor com o id: ${id}`,
-        });
-      }
-
-      await queryInterface.bulkDelete(collectionName, { id });
-
-      return res.status(200).json(true);
+      return res.json({
+        success: 'Deletado com sucesso',
+      });
     } catch (e) {
       return res.status(400).json({
-        errors: 'Ocorreu um erro inesperado',
+        errors: e.message || 'Ocorreu um erro inesperado',
       });
     }
   }
 
   async update(req, res) {
-    try {
-      const existPermission = await Permission.checksPermission(req.userId, 'edit');
+    const existPermission = await Permission.checksPermission(req.userId, 'edit');
 
-      if (!existPermission) {
-        return res.status(400).json({
-          errors: 'Este usuario não possui a permissao necessaria',
-        });
-      }
-
-      const { id } = req.params;
-      const { collectionName, fieldName, value } = req.body;
-
-      if (!collectionName || !fieldName || !value || !id) {
-        return res.status(400).json({
-          errors: 'Valores inválidos',
-        });
-      }
-
-      const tableExist = await queryInterface.tableExists(collectionName);
-
-      if (!tableExist) {
-        return res.status(400).json({
-          errors: `A tabela ${collectionName} não exite`,
-        });
-      }
-
-      const tabela = await queryInterface.describeTable(collectionName);
-      if (!tabela[fieldName]) {
-        return res.status(400).json({
-          errors: `O campo '${fieldName}' não existe na tabela.`,
-        });
-      }
-
-      const registro = await queryInterface.select(null, collectionName, {
-        where: { id },
+    if (!existPermission) {
+      return res.status(400).json({
+        errors: 'Este usuario não possui a permissao necessaria',
       });
+    }
 
-      if (registro.length === 0) {
-        return res.status(400).json({
-          errors: `O registro com o ID '${id}' não existe na tabela '${collectionName}`,
-        });
+    const { id } = req.params;
+    const { collectionName, values } = req.body;
+
+    if (!collectionName || !values || !id) {
+      return res.status(400).json({
+        errors: 'Valores inválidos',
+      });
+    }
+
+    const mongoDb = new MongoDb(req.company);
+    const client = await mongoDb.connect();
+
+    try {
+      const collection = client.db(req.company).collection(collectionName);
+
+      if (!await mongoDb.existValue(id, collectionName)) {
+        throw new Error(`O registro com o ID '${id}' não existe na tabela '${collectionName}`);
       }
 
-      await queryInterface.bulkUpdate(collectionName, { [fieldName]: value }, { id });
+      await collection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: values },
+      );
 
       return res.json({
-        success: `campo ${fieldName} alterado com sucesso`,
+        success: 'alterado com sucesso',
       });
     } catch (e) {
       return res.status(400).json({
-        errors: 'Ocorreu um erro inesperado',
+        errors: e.message || 'Ocorreu um erro inesperado',
       });
     }
   }

@@ -4,9 +4,9 @@ import fieldController from '../controllers/fieldController';
 
 const routes = new Router();
 
-routes.get('/:collectionName', loginRequire, fieldController.show);
+routes.get('/:collectionName', loginRequire, fieldController.index);
 routes.post('/', loginRequire, fieldController.store);
 routes.put('/', loginRequire, fieldController.update);
-// routes.delete('/', loginRequire, fieldController.delete)
+routes.delete('/:collectionName/:fieldName', loginRequire, fieldController.delete);
 
 export default routes;

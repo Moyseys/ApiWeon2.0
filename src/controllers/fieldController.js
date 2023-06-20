@@ -1,13 +1,9 @@
 import Permission from '../models/PermissionsModel';
 
-import sequelize from '../database/index';
-
 import MongoDb from '../database/mongoDb';
 
-const queryInterface = sequelize.getQueryInterface();
-
-class TableController {
-  async show(req, res) {
+class FieldController {
+  async index(req, res) {
     const { collectionName } = req.params;
 
     if (!collectionName) {
@@ -20,23 +16,39 @@ class TableController {
     const client = await mongoDb.connect();
 
     try {
-      // table exist
+      await mongoDb.existDb(req.company);
       const database = client.db(req.company);
-      const collections = (await database.listCollections().toArray()).map((collec) => collec.name);
-      const collectionExist = collections.includes(collectionName);
 
-      if (!collectionExist) {
-        return res.status(400).json({
-          errors: `A collection ${collectionName} não exite`,
-        });
+      if (!await mongoDb.existCollection(collectionName)) {
+        throw new Error('Essa predefinição não existe');
       }
       const collection = database.collection(collectionName);
-      const validationCollection = await collection.options();
-      return res.status(200).json(validationCollection);
+
+      const rule = await collection.options();
+      let fields = [];
+
+      if (Object.keys(rule).length <= 0) {
+        throw new Error('Não há nenhum campo criado');
+      }
+
+      const { properties } = rule.validator.$jsonSchema;
+      const { required } = rule.validator.$jsonSchema;
+
+      fields = (Object.entries(properties)).reduce((accumulator, field) => {
+        const objFields = {};
+        [objFields.key] = field;
+        objFields.type = field[1].bsonType;
+        objFields.required = !!(required.includes(field[0]));
+        accumulator.push(objFields);
+        return accumulator;
+      }, []);
+
+      const response = { collectionName, fields };
+
+      return res.status(200).json(response);
     } catch (e) {
       return res.status(400).json({
-        errors: 'Ocorreu um erro inesperado',
-        e,
+        errors: e.message || 'Ocorreu um erro inesperado',
       });
     } finally {
       mongoDb.close();
@@ -64,6 +76,7 @@ class TableController {
     const client = await mongoDb.connect();
 
     try {
+      await mongoDb.existDb(req.company);
       const database = client.db(req.company);
 
       let rule;
@@ -94,11 +107,7 @@ class TableController {
         let { properties } = rules.validator.$jsonSchema;
         let { required } = rules.validator.$jsonSchema;
 
-        if (properties[fieldName]) {
-          return res.status(400).json({
-            errors: 'Este campo já existe',
-          });
-        }
+        if (properties[fieldName]) throw new Error('Este campo já existe');
 
         if (options.required) {
           required.push(fieldName);
@@ -131,12 +140,11 @@ class TableController {
       await database.command(command);
 
       return res.status(200).json({
-        command,
         success: 'Campo criado com sucesso',
       });
     } catch (e) {
       return res.status(400).json({
-        errors: 'Ocorreu um erro inesperado',
+        errors: e.message || 'Ocorreu um erro inesperado',
       });
     } finally {
       mongoDb.close();
@@ -144,86 +152,126 @@ class TableController {
   }
 
   async delete(req, res) {
+    const existPermission = await Permission.checksPermission(req.userId, 'delet');
+
+    if (!existPermission) {
+      return res.status(400).json({
+        errors: 'Este usuario não possui a permissao necessaria',
+      });
+    }
+
+    const { collectionName, fieldName } = req.params;
+
+    if (!fieldName || !collectionName) {
+      return res.status(400).json({
+        errors: 'Valor inválido',
+      });
+    }
+
+    const mongoDb = new MongoDb(req.company);
+    const client = await mongoDb.connect();
+
     try {
-      const existPermission = await Permission.checksPermission(req.userId, 'delet');
+      await mongoDb.existDb(req.company);
+      const database = client.db(req.company);
+      const collection = database.collection(collectionName);
+      const rules = await collection.options();
 
-      if (!existPermission) {
-        return res.status(400).json({
-          errors: 'Este usuario não possui a permissao necessaria',
-        });
-      }
+      let { required } = rules.validator.$jsonSchema;
+      if (required.includes(fieldName)) required.splice(required.indexOf(fieldName), 1);
 
-      const { collectionName, fieldName } = req.body;
+      let { properties } = rules.validator.$jsonSchema;
+      delete properties[fieldName];
 
-      if (!fieldName || !collectionName) {
-        return res.status(400).json({
-          errors: 'Valor inválido',
-        });
-      }
+      const validator = {
+        $jsonSchema: {
+          required,
+          properties,
+        },
+      };
 
-      const tableExist = await queryInterface.tableExists(collectionName);
+      const command = {
+        collMod: collectionName,
+        validator,
+      };
 
-      if (!tableExist) {
-        return res.status(400).json({
-          errors: `A tabela ${collectionName} não exite`,
-        });
-      }
+      await database.command(command);
 
-      queryInterface.removeColumn(collectionName, fieldName);
-
-      return res.status(200).json(true);
+      return res.status(200).json({
+        success: 'Campo deletado com sucesso',
+      });
     } catch (e) {
       return res.status(400).json({
-        errors: 'Ocorreu um erro inesperado',
+        errors: e.message || 'Ocorreu um erro inesperado',
       });
     }
   }
 
   async update(req, res) {
+    const existPermission = await Permission.checksPermission(req.userId, 'edit');
+
+    if (!existPermission) {
+      return res.status(400).json({
+        errors: 'Este usuario não possui a permissao necessaria',
+      });
+    }
+
+    const {
+      collectionName, fieldName, newFieldName, fieldRequired, newValues,
+    } = req.body;
+
+    if (!collectionName || !fieldName || !newValues) {
+      return res.status(400).json({
+        errors: 'Valores inválidos',
+      });
+    }
+
+    const mongoDb = new MongoDb(req.company);
+    const client = await mongoDb.connect();
+
     try {
-      const existPermission = await Permission.checksPermission(req.userId, 'edit');
+      await mongoDb.existDb(req.company);
+      const database = client.db(req.company);
+      const collection = database.collection(collectionName);
 
-      if (!existPermission) {
-        return res.status(400).json({
-          errors: 'Este usuario não possui a permissao necessaria',
-        });
+      let { required } = (await collection.options()).validator.$jsonSchema;
+      if (fieldRequired) {
+        const indice = required.indexOf(fieldName);
+        required.splice(indice, 1, newFieldName || fieldName);
       }
 
-      const { collectionName, fieldNameBefore, fieldNameAfter } = req.body;
+      let { properties } = (await collection.options()).validator.$jsonSchema;
+      const fields = Object.keys(properties);
+      if (!fields.includes(fieldName)) throw new Error('Esse campo não existe');
 
-      if (!collectionName || !fieldNameBefore || !fieldNameAfter) {
-        return res.status(400).json({
-          errors: 'Valores inválidos',
-        });
-      }
+      delete properties[fieldName];
+      properties[newFieldName || fieldName] = { bsonType: newValues.type, description: newValues.description };
 
-      const tableExist = await queryInterface.tableExists(collectionName);
+      const validator = {
+        $jsonSchema: {
+          bsonType: 'object',
+          required,
+          properties,
 
-      if (!tableExist) {
-        return res.status(400).json({
-          errors: `A tabela ${collectionName} não exite`,
-        });
-      }
+        },
+      };
 
-      const tableDescribe = await queryInterface.describeTable(collectionName);
+      const command = {
+        collMod: collectionName,
+        validator,
+      };
 
-      if (!tableDescribe[fieldNameBefore]) {
-        return res.status(400).json({
-          errors: 'Este campo não existe',
-        });
-      }
-
-      await queryInterface.renameColumn(collectionName, fieldNameBefore, fieldNameAfter);
+      await database.command(command);
 
       return res.json({
-        success: 'Campo renomeado com sucesso',
+        success: 'Campo alterado com sucesso',
       });
     } catch (e) {
       return res.status(400).json({
-        errors: 'Ocorreu um erro inesperado',
+        errors: e.message || 'Ocorreu um erro inesperado',
       });
     }
   }
 }
 
-export default new TableController();
+export default new FieldController();
