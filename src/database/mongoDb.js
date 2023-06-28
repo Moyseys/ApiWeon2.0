@@ -15,7 +15,7 @@ class Mongo {
       return null;
     }
     try {
-      const client = new MongoClient(`${process.env.MONGO_CONNECTION_STRING}/${this.database}`, {
+      const client = new MongoClient(`${process.env.MONGO_CONNECTION_STRING}`, {
         useNewUrlParser: true,
         useUnifiedTopology: true,
       });
