@@ -1,14 +1,20 @@
 {
   "name": "projeto",
-  "version": "1.0.0",
-  "description": "",
+  "version": "2.0.0",
+  "description": "This api has the function of serving our front end to weon. Weon is a system created by Nowe to manage data and documents. ",
   "main": "server.js",
   "scripts": {
     "dev": "nodemon src/server.js",
     "build": "sucrase ./src -d ./dist --transforms imports",
     "start": "node dist/server.js"
   },
-  "keywords": [],
+  "keywords": [
+    "logistics",
+    "nowe",
+    "tcc",
+    "management",
+    "system"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
