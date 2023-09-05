@@ -1,7 +1,7 @@
 # ApiWeon2.0
  
 Weon é um sistema criado pela Nowe para gerenciar dados e documentos.   
-Weon está hospedada nesse [site](https://nowecompany.com.br/weon) e seu [repositório](https://github.com/NoweCompany/weon). 
+Weon está hospedada nesse [site](https://nowecompany.com.br/weon) 
 
 **Login para visitantes**  
 Email: visitante@gmail.com  
